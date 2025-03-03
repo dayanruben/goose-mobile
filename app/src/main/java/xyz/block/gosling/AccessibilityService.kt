@@ -15,18 +15,24 @@ class GoslingAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
 
+        // Set up service info with all capabilities enabled
         val info = AccessibilityServiceInfo()
-        info.eventTypes = AccessibilityEvent.TYPE_VIEW_CLICKED or
-                AccessibilityEvent.TYPE_VIEW_FOCUSED or
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-        info.feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-        info.flags = AccessibilityServiceInfo.FLAG_REQUEST_ENHANCED_WEB_ACCESSIBILITY or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        info.apply {
+            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+            flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
+                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            notificationTimeout = 100
+        }
+        
+        // Update the service info
         serviceInfo = info
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // Handle accessibility events here if needed
+        // Handle accessibility events if needed
     }
 
     override fun onInterrupt() {

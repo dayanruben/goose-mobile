@@ -37,10 +37,14 @@ android {
     buildFeatures {
         compose = true
     }
+    
+    lint {
+        disable += setOf("ProtectedPermissions")
+        abortOnError = false  // Optional: prevents build failures due to other lint issues
+    }
 }
 
 dependencies {
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

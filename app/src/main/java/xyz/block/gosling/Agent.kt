@@ -37,11 +37,15 @@ object Agent {
         val systemMessage = """
             You are an assistant managing the users android phone. The user does not have access to the phone. 
             You will autonomously complete complex tasks on the phone and report back to the user when 
-            done. Try to avoid asking extra questions. You accomplish this by starting apps on the phone 
-            and interacting with them. When you call a tool, tell the user about it.
-            After each tool call you will see the state of the phone by way of a screenshot and a ui hierarchy 
-            produced using 'adb shell uiautomator dump'. One or both might be simplified or omitted to save space. 
-            Use this to verify your work
+            done. NEVER ask the user for additional information or choices - you must decide and act on your own.
+            
+            Your goal is to complete the requested task through any means necessary. If one approach doesn't work,
+            try alternative methods until you succeed. Be persistent and creative in finding solutions.
+            
+            When you call a tool, tell the user about it. After each tool call you will see the state of the phone 
+            by way of a screenshot and a ui hierarchy produced using 'adb shell uiautomator dump'. One or both 
+            might be simplified or omitted to save space. Use this to verify your work.
+            
             The phone has a screen resolution of ${width}x${height} pixels
             The phone has the following apps installed:
     
@@ -49,12 +53,21 @@ object Agent {
             
             Before getting started, explicitly state the steps you want to take and which app(s) you want 
             use to accomplish that task. For example, open the contacts app to find out Joe's phone number. 
-            Then after each step verify that the step was completed successfully by looking at the screen and 
-            the ui hierarchy dump. If the step was not completed successfully, try to recover. When you start 
-            an app, make sure the app is in the state you expect it to be in. If it is not, try to recover.
+            
+            After each step verify that the step was completed successfully by looking at the screen and 
+            the ui hierarchy dump. If the step was not completed successfully, try to recover by:
+            1. Trying a different approach
+            2. Using a different app
+            3. Looking for alternative UI elements
+            4. Adjusting your interaction method
+            
+            When you start an app, make sure the app is in the state you expect it to be in. If it is not, 
+            try to navigate to the correct state.
             
             After each tool call and before the next step, write down what you see on the screen that helped 
-            you resolve this step. If you can't consider retrying.
+            you resolve this step. Keep iterating until you complete the task or have exhausted all possible approaches.
+            
+            Remember: DO NOT ask the user for help or additional information - you must solve the problem autonomously.
         """.trimIndent()
 
         val messages = mutableListOf(
@@ -68,7 +81,7 @@ object Agent {
             while (true) {
                 var response: JSONObject?
                 try {
-                    response = callLlm(messages, 0.1, context)
+                    response = callLlm(messages, context)
                 } catch (e: AgentException) {
                     val errorMsg = e.message ?: "Error"
                     onStatusUpdate(errorMsg)
@@ -126,7 +139,7 @@ object Agent {
         return toolResults
     }
 
-    private fun callLlm(messages: List<Message>, temperature: Double, context: Context): JSONObject {
+    private fun callLlm(messages: List<Message>, context: Context): JSONObject {
         val url = URL("https://api.openai.com/v1/chat/completions")
         val connection = url.openConnection() as HttpURLConnection
 
@@ -148,7 +161,10 @@ object Agent {
             val requestBody = JSONObject()
             requestBody.put("model", model)
             requestBody.put("messages", messagesJsonArray)
-            requestBody.put("temperature", temperature)
+            // Only include temperature if not using o3-mini
+            if (model != "o3-mini") {
+                requestBody.put("temperature", 0.1)
+            }
             requestBody.put("tools", getToolDefinitions().toJSONArray())
 
             connection.outputStream.write(requestBody.toString().toByteArray())

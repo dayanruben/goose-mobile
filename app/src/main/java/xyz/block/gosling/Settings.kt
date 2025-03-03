@@ -51,7 +51,7 @@ fun SettingsSection(context: Context) {
     var showApiKey by remember { mutableStateOf(false) }
     var expandedDropdown by remember { mutableStateOf(false) }
 
-    val models = listOf("gpt-4o", "gpt-4o-mini", "claude", "gemini-flash")
+    val models = listOf("gpt-4o", "o3-mini", "claude", "gemini-flash")
 
     Card(
         modifier = Modifier

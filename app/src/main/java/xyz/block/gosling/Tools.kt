@@ -6,12 +6,14 @@ import android.provider.AlarmClock
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.annotation.RequiresApi
+import org.json.JSONArray
 import org.json.JSONObject
 
 @Target(AnnotationTarget.FUNCTION)
@@ -61,6 +63,99 @@ object ToolHandler {
         }
 
         return gestureResult
+    }
+
+    private fun serializeNodeHierarchy(node: AccessibilityNodeInfo, clean: Boolean): JSONObject {
+        val json = JSONObject()
+        
+        try {
+            json.put("class", node.className)
+            json.put("package", node.packageName)
+            
+            node.text?.toString()?.takeIf { it.isNotEmpty() }?.let {
+                json.put("text", it)
+            }
+            
+            node.contentDescription?.toString()?.takeIf { it.isNotEmpty() }?.let {
+                json.put("content-desc", it)
+            }
+
+            node.viewIdResourceName?.takeIf { it.isNotEmpty() }?.let {
+                json.put("resource-id", it)
+            }
+
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            json.put("bounds", JSONObject().apply {
+                put("left", bounds.left)
+                put("top", bounds.top)
+                put("right", bounds.right)
+                put("bottom", bounds.bottom)
+            })
+
+            if (!clean) {
+                json.put("clickable", node.isClickable)
+                json.put("focusable", node.isFocusable)
+                json.put("enabled", node.isEnabled)
+                json.put("scrollable", node.isScrollable)
+                json.put("editable", node.isEditable)
+            }
+
+            val children = JSONArray()
+            for (i in 0 until node.childCount) {
+                node.getChild(i)?.let { childNode ->
+                    try {
+                        children.put(serializeNodeHierarchy(childNode, clean))
+                    } finally {
+                        childNode.recycle()
+                    }
+                }
+            }
+            if (children.length() > 0) {
+                json.put("children", children)
+            }
+        } catch (e: Exception) {
+            json.put("error", "Failed to serialize node: ${e.message}")
+        }
+
+        return json
+    }
+
+    @Tool(
+        name = "getUiHierarchy",
+        description = "Get the current UI hierarchy as a JSON string. This shows all UI elements, their properties, and locations on screen.",
+        parameters = [
+            ParameterDef(
+                name = "clean",
+                type = "boolean",
+                description = "If true, omits additional properties like clickable, focusable, etc. Default is false.",
+                required = false
+            )
+        ],
+        requiresAccessibility = true
+    )
+    fun getUiHierarchy(accessibilityService: AccessibilityService, args: JSONObject): String {
+        val clean = args.optBoolean("clean", false)
+        val root = JSONObject()
+        
+        try {
+            val activeWindow = accessibilityService.rootInActiveWindow
+            if (activeWindow != null) {
+                try {
+                    root.put("package", activeWindow.packageName)
+                    root.put("class", activeWindow.className)
+                    root.put("nodes", serializeNodeHierarchy(activeWindow, clean))
+                } finally {
+                    activeWindow.recycle()
+                }
+            } else {
+                root.put("error", "No active window found")
+            }
+        } catch (e: Exception) {
+            root.put("error", "Failed to get UI hierarchy: ${e.message}")
+        }
+        
+        return root.toString(2)
     }
 
     @Tool(

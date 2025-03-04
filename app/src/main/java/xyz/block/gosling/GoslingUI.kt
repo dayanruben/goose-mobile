@@ -155,12 +155,27 @@ fun GoslingUI(
                     }
 
                     override fun onError(error: Int) {
-                        inputText = "Error: $error"
+                        val errorMessage = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH -> "No speech detected. If you're using an emulator, please use the keyboard instead as emulators don't support voice input."
+                            SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
+                            SpeechRecognizer.ERROR_CLIENT -> "Client side error"
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
+                            SpeechRecognizer.ERROR_NETWORK -> "Network error"
+                            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
+                            SpeechRecognizer.ERROR_SERVER -> "Server error"
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
+                            else -> "Error: $error"
+                        }
+                        inputText = errorMessage
                         isVoiceMode = false
                     }
 
-                    override fun onReadyForSpeech(params: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        inputText = "Listening..."
+                    }
+                    override fun onBeginningOfSpeech() {
+                        inputText = "Listening..."
+                    }
                     override fun onRmsChanged(rmsdB: Float) {}
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {}

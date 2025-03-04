@@ -2,6 +2,7 @@ package xyz.block.gosling.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -9,10 +10,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // Base colors
-val primaryColor = Color(0xFF7A7EFB)
+val primaryColor = Color(0xFF7A7EFB)  // Purple
 val secondaryColor = Color(0xFFD8D8D8)
 val tertiaryColor = Color(0xFF7A7EFB)
 val errorColor = Color(0xFFB3261E)
@@ -20,7 +22,7 @@ val surfaceColor = Color(0xFFFAFBFF)
 val outlineColor = Color(0xFF79747E)
 
 // Dark mode colors
-val darkPrimaryColor = Color(0xFF9A9DFC)
+val darkPrimaryColor = Color(0xFF9A9DFC)  // Lighter purple
 val darkSecondaryColor = Color(0xFF3A3A3A)
 val darkTertiaryColor = Color(0xFF9A9DFC)
 val darkErrorColor = Color(0xFFCF6679)
@@ -33,14 +35,6 @@ class GoslingColors(
     val secondaryButton: Color,
     val inputBackground: Color,
     val primaryText: Color,
-    val secondaryText: Color,
-    val borderColor: Color,
-    val messageBubbleUser: Color,
-    val messageBubbleAssistant: Color,
-    val messageTextUser: Color,
-    val messageTextAssistant: Color,
-    val iconColor: Color,
-    val shadowColor: Color
 )
 
 val LocalGoslingColors = staticCompositionLocalOf {
@@ -49,14 +43,6 @@ val LocalGoslingColors = staticCompositionLocalOf {
         secondaryButton = secondaryColor,
         inputBackground = surfaceColor,
         primaryText = Color.White,
-        secondaryText = Color.Black,
-        borderColor = outlineColor,
-        messageBubbleUser = primaryColor,
-        messageBubbleAssistant = secondaryColor,
-        messageTextUser = Color.White,
-        messageTextAssistant = Color.Black,
-        iconColor = primaryColor,
-        shadowColor = Color.Black.copy(alpha = 0.1f)
     )
 }
 
@@ -123,10 +109,17 @@ private val Typography = Typography(
     titleLarge = TextStyle(fontSize = 20.sp)
 )
 
+private val Shapes = Shapes(
+    small = RoundedCornerShape(4.dp),
+    medium = RoundedCornerShape(8.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(24.dp)
+)
+
 @Composable
 fun GoslingTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -143,20 +136,13 @@ fun GoslingTheme(
         secondaryButton = if (darkTheme) darkSecondaryColor else secondaryColor,
         inputBackground = if (darkTheme) darkSurfaceColor else surfaceColor,
         primaryText = if (darkTheme) Color.White else Color.Black,
-        secondaryText = if (darkTheme) Color.Black else Color.White,
-        borderColor = if (darkTheme) darkOutlineColor else outlineColor,
-        messageBubbleUser = if (darkTheme) darkPrimaryColor else primaryColor,
-        messageBubbleAssistant = if (darkTheme) darkSecondaryColor else secondaryColor,
-        messageTextUser = if (darkTheme) Color.Black else Color.White,
-        messageTextAssistant = if (darkTheme) Color.White else Color.Black,
-        iconColor = if (darkTheme) darkPrimaryColor else primaryColor,
-        shadowColor = Color.Black.copy(alpha = 0.1f)
     )
 
     CompositionLocalProvider(LocalGoslingColors provides goslingColors) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
+            shapes = Shapes,
             content = content
         )
     }

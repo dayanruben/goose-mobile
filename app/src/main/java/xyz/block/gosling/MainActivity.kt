@@ -11,13 +11,32 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Badge
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -34,10 +53,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         settingsManager = SettingsManager(this)
         isAccessibilityEnabled = settingsManager.isAccessibilityEnabled
-        
+
         // Start the Agent service
         startForegroundService(Intent(this, Agent::class.java))
-        
+
         // Register the launcher for accessibility settings
         accessibilitySettingsLauncher = registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
@@ -67,7 +86,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         GoslingApplication.isMainActivityRunning = true
-        
+
         // Check and save accessibility permission state
         val isEnabled = checkAccessibilityPermission(this)
         settingsManager.isAccessibilityEnabled = isEnabled
@@ -107,24 +126,38 @@ fun MainContent(
     } else if (showSettings) {
         SettingsScreen(
             settingsManager = settingsManager,
-            onBack = { showSettings = false }
+            onBack = { showSettings = false },
+            openAccessibilitySettings = openAccessibilitySettings,
+            isAccessibilityEnabled = isAccessibilityEnabled
         )
     } else {
         Box(
             modifier = modifier.fillMaxSize()
         ) {
-            // Settings button in top-right corner
-            IconButton(
-                onClick = { showSettings = true },
+            // Settings button in top-right corner with badge
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(8.dp)
             ) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
+                IconButton(
+                    onClick = { showSettings = true }
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (!isAccessibilityEnabled) {
+                    Badge(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd),
+                        containerColor = MaterialTheme.colorScheme.error
+                    ) {
+                        Text("!")
+                    }
+                }
             }
 
             // Main UI content aligned to bottom
@@ -144,7 +177,7 @@ fun MainScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val goslingColors = LocalGoslingColors.current
     val settingsManager = remember { SettingsManager(context) }
-    
+
     var isAccessibilityEnabled by remember { mutableStateOf(settingsManager.isAccessibilityEnabled) }
 
     Column(
@@ -205,7 +238,10 @@ fun MainScreen(modifier: Modifier = Modifier) {
 }
 
 fun checkAccessibilityPermission(context: Context): Boolean {
-    val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+    val enabledServices = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+    )
     val isEnabled = enabledServices?.contains(context.packageName) == true
     Log.d("Gosling", "Accessibility check: $enabledServices, enabled: $isEnabled")
     return isEnabled

@@ -214,7 +214,7 @@ class Agent : Service() {
                     return@withContext "Error: ${e.message}"
                 }
             }
-            "Done"
+            ""
         }
     }
 

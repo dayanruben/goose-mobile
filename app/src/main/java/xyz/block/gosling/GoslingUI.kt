@@ -190,23 +190,21 @@ fun GoslingUI(
         }
     }
 
-    val goslingColors = LocalGoslingColors.current
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(bottom = 16.dp)
+        modifier = modifier.fillMaxWidth()
     ) {
-        Box(
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                .background(goslingColors.primaryBackground)
-                .padding(16.dp)
+                .fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -218,17 +216,11 @@ fun GoslingUI(
                             isVoiceMode = !isVoiceMode
                             isOutputMode = false 
                         },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(
-                                color = goslingColors.secondaryButton,
-                                shape = RoundedCornerShape(8.dp)
-                            )
                     ) {
                         Icon(
                             imageVector = if (isVoiceMode) Icons.Filled.Keyboard else Icons.Filled.Mic,
-                            contentDescription = if (isVoiceMode) "Listen Mode" else "Type Mode",
-                            tint = goslingColors.primaryText
+                            contentDescription = if (isVoiceMode) "Switch to Keyboard" else "Switch to Voice",
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Image(
@@ -239,63 +231,48 @@ fun GoslingUI(
                 }
 
                 if (isOutputMode) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(goslingColors.inputBackground)
-                            .padding(12.dp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Column(
+                        Text(
+                            text = outputText,
                             modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Button(
+                            onClick = { isOutputMode = false },
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(
-                                text = outputText,
-                                color = goslingColors.primaryText,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            Button(
-                                onClick = { isOutputMode = false },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = goslingColors.secondaryButton),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("New Request", color = goslingColors.primaryText)
-                            }
+                            Text("New Request")
                         }
                     }
                 } else {
                     if (isVoiceMode) {
                         Text(
                             text = inputText.ifEmpty { "Listening..." },
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = goslingColors.primaryText
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(goslingColors.inputBackground)
-                                .padding(12.dp)
-                        ) {
-                            BasicTextField(
-                                value = inputText,
-                                onValueChange = { inputText = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                textStyle = TextStyle(color = goslingColors.primaryText)
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Type your request...") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
                             )
-                        }
+                        )
 
                         Button(
                             onClick = { executeCommand(inputText) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = goslingColors.secondaryButton),
-                            shape = RoundedCornerShape(8.dp)
+                            enabled = inputText.isNotBlank()
                         ) {
-                            Text("Submit", color = goslingColors.primaryText)
+                            Text("Submit")
                         }
                     }
                 }

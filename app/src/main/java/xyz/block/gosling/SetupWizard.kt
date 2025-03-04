@@ -1,25 +1,45 @@
 package xyz.block.gosling
 
-import android.content.Context
 import android.content.Intent
 import android.provider.Settings
-import android.util.Log
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import xyz.block.gosling.ui.theme.LocalGoslingColors
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
 
 enum class SetupStep {
     WELCOME,
@@ -67,6 +87,7 @@ fun SetupWizard(
                     onNext = { currentStep = SetupStep.ACCESSIBILITY_PERMISSION }
                 )
             }
+
             SetupStep.ACCESSIBILITY_PERMISSION -> {
                 AccessibilityPermissionStep(
                     isEnabled = isAccessibilityEnabled,
@@ -74,11 +95,13 @@ fun SetupWizard(
                     onNext = { currentStep = SetupStep.ASSISTANT_SELECTION }
                 )
             }
+
             SetupStep.ASSISTANT_SELECTION -> {
                 AssistantSelectionStep(
                     onNext = { currentStep = SetupStep.LLM_CONFIG }
                 )
             }
+
             SetupStep.LLM_CONFIG -> {
                 LLMConfigStep(
                     llmModel = llmModel,
@@ -99,24 +122,47 @@ fun SetupWizard(
 
 @Composable
 private fun WelcomeStep(onNext: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "Welcome to Gosling!",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Text(
-            text = "Let's get you set up with your personal AI assistant.",
-            style = MaterialTheme.typography.bodyLarge
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Text(
+                text = "Welcome to Gosling!",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Let's get you set up with your personal AI assistant.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+
         Button(
             onClick = onNext,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ),
+            shape = MaterialTheme.shapes.medium
         ) {
-            Text("Get Started")
+            Text(
+                "Get Started",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
         }
     }
 }
@@ -127,34 +173,48 @@ private fun AccessibilityPermissionStep(
     onEnable: () -> Unit,
     onNext: () -> Unit
 ) {
-    val goslingColors = LocalGoslingColors.current
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "Accessibility Permissions",
-            style = MaterialTheme.typography.titleLarge
-        )
-        Text(
-            text = "Gosling needs accessibility permissions to interact with other apps and help you with tasks.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Button(
-            onClick = onEnable,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isEnabled,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isEnabled) goslingColors.secondaryButton else goslingColors.primaryBackground
-            )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text(if (isEnabled) "Accessibility Enabled" else "Enable Accessibility")
+            Text(
+                text = "Accessibility Permissions",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Gosling needs accessibility permissions to interact with other apps and help you with tasks.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Button(
+                onClick = onEnable,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isEnabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isEnabled)
+                        MaterialTheme.colorScheme.secondary
+                    else
+                        MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(if (isEnabled) "Accessibility Enabled" else "Enable Accessibility")
+            }
         }
-        
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(
@@ -180,11 +240,9 @@ private fun AssistantSelectionStep(
     onNext: () -> Unit
 ) {
     val context = LocalContext.current
-    val goslingColors = LocalGoslingColors.current
     var isAssistantEnabled by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        // Check if our app is the current assistant
         val settingSecure = Settings.Secure.getString(
             context.contentResolver,
             "assistant"
@@ -192,35 +250,51 @@ private fun AssistantSelectionStep(
         isAssistantEnabled = settingSecure?.contains(context.packageName) == true
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "Set Default Assistant",
-            style = MaterialTheme.typography.titleLarge
-        )
-        Text(
-            text = "Make Gosling your default assistant app to get the most out of its features.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        Button(
-            onClick = {
-                val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !isAssistantEnabled,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (isAssistantEnabled) goslingColors.secondaryButton else goslingColors.primaryBackground
-            )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text(if (isAssistantEnabled) "Assistant Enabled" else "Set as Default Assistant")
+            Text(
+                text = "Set Default Assistant",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Make Gosling your default assistant app to get the most out of its features.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Button(
+                onClick = {
+                    val intent = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS)
+                    context.startActivity(intent)
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isAssistantEnabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isAssistantEnabled)
+                        MaterialTheme.colorScheme.secondary
+                    else
+                        MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(if (isAssistantEnabled) "Assistant Enabled" else "Set as Default Assistant")
+            }
         }
-        
+
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 32.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedButton(
@@ -257,70 +331,91 @@ private fun LLMConfigStep(
         "o3-medium" to "O3 Medium",
         "o3-large" to "O3 Large"
     )
-    
+
     var expanded by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "LLM Configuration",
-            style = MaterialTheme.typography.titleLarge
-        )
-        Text(
-            text = "Select your LLM model and enter your API key to get started.",
-            style = MaterialTheme.typography.bodyMedium
-        )
-        
-        // Model Selection Dropdown
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = it }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            OutlinedTextField(
-                value = models.find { it.first == llmModel }?.second ?: llmModel,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("LLM Model") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()
+            Text(
+                text = "LLM Configuration",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            
-            ExposedDropdownMenu(
+            Text(
+                text = "Select your LLM model and enter your API key to get started.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+
+            ExposedDropdownMenuBox(
                 expanded = expanded,
-                onDismissRequest = { expanded = false }
+                onExpandedChange = { expanded = it }
             ) {
-                models.forEach { (modelId, displayName) ->
-                    DropdownMenuItem(
-                        text = { Text(displayName) },
-                        onClick = {
-                            onLLMModelChange(modelId)
-                            expanded = false
-                        }
-                    )
+                OutlinedTextField(
+                    value = models.find { it.first == llmModel }?.second ?: llmModel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("LLM Model") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    models.forEach { (modelId, displayName) ->
+                        DropdownMenuItem(
+                            text = { Text(displayName) },
+                            onClick = {
+                                onLLMModelChange(modelId)
+                                expanded = false
+                            }
+                        )
+                    }
                 }
             }
+
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = onApiKeyChange,
+                label = { Text("API Key") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
-        
-        OutlinedTextField(
-            value = apiKey,
-            onValueChange = onApiKeyChange,
-            label = { Text("API Key") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.fillMaxWidth()
-        )
-        
+
         Button(
             onClick = onComplete,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = llmModel.isNotEmpty() && apiKey.isNotEmpty()
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 32.dp),
+            enabled = llmModel.isNotEmpty() && apiKey.isNotEmpty(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ),
+            shape = MaterialTheme.shapes.medium
         ) {
-            Text("Complete Setup")
+            Text(
+                "Complete Setup",
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
         }
     }
 }
@@ -329,7 +424,9 @@ private fun LLMConfigStep(
 @Composable
 fun SettingsScreen(
     settingsManager: SettingsManager,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    openAccessibilitySettings: () -> Unit,
+    isAccessibilityEnabled: Boolean
 ) {
     var llmModel by remember { mutableStateOf(settingsManager.llmModel) }
     var apiKey by remember { mutableStateOf(settingsManager.apiKey) }
@@ -342,7 +439,7 @@ fun SettingsScreen(
         "o3-medium" to "O3 Medium",
         "o3-large" to "O3 Large"
     )
-    
+
     var expanded by remember { mutableStateOf(false) }
 
     Column(
@@ -358,7 +455,7 @@ fun SettingsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
             }
             Text(
                 text = "Settings",
@@ -366,6 +463,35 @@ fun SettingsScreen(
             )
             // Empty box for alignment
             Box(modifier = Modifier.width(48.dp))
+        }
+
+        // Accessibility Settings Section
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Accessibility Permissions",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Text(
+                text = "Gosling needs accessibility permissions to interact with other apps and help you with tasks.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Button(
+                onClick = openAccessibilitySettings,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isAccessibilityEnabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isAccessibilityEnabled)
+                        MaterialTheme.colorScheme.secondary
+                    else
+                        MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(if (isAccessibilityEnabled) "Accessibility Enabled" else "Enable Accessibility")
+            }
         }
 
         // Model Selection Dropdown
@@ -383,7 +509,7 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .menuAnchor()
             )
-            
+
             ExposedDropdownMenu(
                 expanded = expanded,
                 onDismissRequest = { expanded = false }
@@ -400,10 +526,10 @@ fun SettingsScreen(
                 }
             }
         }
-        
+
         OutlinedTextField(
             value = apiKey,
-            onValueChange = { 
+            onValueChange = {
                 apiKey = it
                 settingsManager.apiKey = it
             },
@@ -420,7 +546,7 @@ fun SettingsScreen(
                 containerColor = MaterialTheme.colorScheme.error
             )
         ) {
-            Text("Reset Setup")
+            Text("Clear saved settings")
         }
     }
 

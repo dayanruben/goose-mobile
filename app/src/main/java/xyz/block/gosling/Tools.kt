@@ -183,6 +183,12 @@ object ToolHandler {
         val packageName = args.getString("package_name")
         val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
             ?: return "Error: App $packageName not found."
+            
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                            Intent.FLAG_ACTIVITY_CLEAR_TASK or 
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                            Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                            
         context.startActivity(launchIntent)
         return "Started app: $packageName"
     }

@@ -1,6 +1,9 @@
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.IBinder
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -35,7 +38,6 @@ import kotlinx.coroutines.launch
 import xyz.block.gosling.Agent
 import xyz.block.gosling.ui.theme.LocalGoslingColors
 
-
 @Composable
 fun GoslingUI(
     context: Context,
@@ -46,9 +48,31 @@ fun GoslingUI(
     var inputText by remember { mutableStateOf("") }
     var outputText by remember { mutableStateOf("") }
     var isOutputMode by remember { mutableStateOf(false) }
+    var boundService by remember { mutableStateOf<Agent?>(null) }
 
     var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
     val scope = rememberCoroutineScope()
+
+    val serviceConnection = remember {
+        object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+                boundService = (service as Agent.AgentBinder).getService()
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                boundService = null
+            }
+        }
+    }
+
+    DisposableEffect(context) {
+        val intent = Intent(context, Agent::class.java)
+        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
+        onDispose {
+            context.unbindService(serviceConnection)
+        }
+    }
 
     fun requestAudioPermission(activity: Activity, onResult: (Boolean) -> Unit) {
         if (ContextCompat.checkSelfPermission(
@@ -70,17 +94,25 @@ fun GoslingUI(
         scope.launch {
             isOutputMode = true
             outputText = "Thinking..."
-            val response = async {
-                Agent.processCommand(input, context) { status ->
-                    outputText = status
-                    Log.d("Agent", "Status update: $status")
+            try {
+                val service = boundService
+                if (service == null) {
+                    outputText = "Error: Service not connected"
+                    return@launch
                 }
-            }.await()
-            outputText += "\n" + response
-            inputText = ""
 
-            kotlinx.coroutines.delay(500)
-            isOutputMode = false
+                val response = async {
+                    service.processCommand(input, context) { status ->
+                        outputText = status
+                        Log.d("Agent", "Status update: $status")
+                    }
+                }.await()
+                outputText += "\n" + response
+            } catch (e: Exception) {
+                Log.e("Agent", "Error executing command", e)
+                outputText += "\n\nError: ${e.message ?: "Unknown error occurred"}\n\nPlease check your internet connection and try again."
+            }
+            inputText = ""
         }
     }
 
@@ -123,12 +155,27 @@ fun GoslingUI(
                     }
 
                     override fun onError(error: Int) {
-                        inputText = "Error: $error"
+                        val errorMessage = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH -> "No speech detected. If you're using an emulator, please use the keyboard instead as emulators don't support voice input."
+                            SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
+                            SpeechRecognizer.ERROR_CLIENT -> "Client side error"
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
+                            SpeechRecognizer.ERROR_NETWORK -> "Network error"
+                            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
+                            SpeechRecognizer.ERROR_SERVER -> "Server error"
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
+                            else -> "Error: $error"
+                        }
+                        inputText = errorMessage
                         isVoiceMode = false
                     }
 
-                    override fun onReadyForSpeech(params: Bundle?) {}
-                    override fun onBeginningOfSpeech() {}
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        inputText = "Listening..."
+                    }
+                    override fun onBeginningOfSpeech() {
+                        inputText = "Listening..."
+                    }
                     override fun onRmsChanged(rmsdB: Float) {}
                     override fun onBufferReceived(buffer: ByteArray?) {}
                     override fun onEndOfSpeech() {}
@@ -143,23 +190,21 @@ fun GoslingUI(
         }
     }
 
-    val goslingColors = LocalGoslingColors.current
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(250.dp)
+        modifier = modifier.fillMaxWidth()
     ) {
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                .background(goslingColors.primaryBackground)
-                .padding(16.dp)
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -167,18 +212,15 @@ fun GoslingUI(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = { isVoiceMode = !isVoiceMode },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(
-                                color = goslingColors.secondaryButton,
-                                shape = RoundedCornerShape(8.dp)
-                            )
+                        onClick = { 
+                            isVoiceMode = !isVoiceMode
+                            isOutputMode = false 
+                        },
                     ) {
                         Icon(
                             imageVector = if (isVoiceMode) Icons.Filled.Keyboard else Icons.Filled.Mic,
-                            contentDescription = if (isVoiceMode) "Listen Mode" else "Type Mode",
-                            tint = goslingColors.primaryText
+                            contentDescription = if (isVoiceMode) "Switch to Keyboard" else "Switch to Voice",
+                            tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
                     Image(
@@ -189,52 +231,48 @@ fun GoslingUI(
                 }
 
                 if (isOutputMode) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(goslingColors.inputBackground)
-                            .padding(12.dp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
                             text = outputText,
-                            color = goslingColors.primaryText,
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodyLarge
                         )
+                        Button(
+                            onClick = { isOutputMode = false },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("New Request")
+                        }
                     }
                 } else {
                     if (isVoiceMode) {
                         Text(
-                            inputText.ifEmpty { "Listening..." },
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = goslingColors.primaryText
+                            text = inputText.ifEmpty { "Listening..." },
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     } else {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(goslingColors.inputBackground)
-                                .padding(12.dp)
-                        ) {
-                            BasicTextField(
-                                value = inputText,
-                                onValueChange = { inputText = it },
-                                modifier = Modifier.fillMaxWidth(),
-                                textStyle = TextStyle(color = Color.Black)
+                        OutlinedTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Type your request...") },
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
                             )
-                        }
+                        )
 
                         Button(
                             onClick = { executeCommand(inputText) },
                             modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = goslingColors.secondaryButton),
-                            shape = RoundedCornerShape(8.dp)
+                            enabled = inputText.isNotBlank()
                         ) {
-                            Text("Submit", color = goslingColors.primaryText)
+                            Text("Submit")
                         }
                     }
                 }

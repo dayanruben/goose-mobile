@@ -2,13 +2,21 @@ package xyz.block.gosling
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Build
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.app.NotificationCompat
 
 class GoslingAccessibilityService : AccessibilityService() {
 
     companion object {
         private var instance: GoslingAccessibilityService? = null
         fun getInstance(): GoslingAccessibilityService? = instance
+        private const val NOTIFICATION_CHANNEL_ID = "gosling_service"
+        private const val NOTIFICATION_ID = 1
     }
 
     override fun onServiceConnected() {
@@ -29,6 +37,42 @@ class GoslingAccessibilityService : AccessibilityService() {
         
         // Update the service info
         serviceInfo = info
+
+        // Start as foreground service
+        startForegroundService()
+    }
+
+    private fun startForegroundService() {
+        createNotificationChannel()
+
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, notificationIntent,
+            PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Gosling Assistant")
+            .setContentText("Running in background")
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+
+        startForeground(NOTIFICATION_ID, notification)
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Gosling Service"
+            val descriptionText = "Keeps Gosling running in background"
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {

@@ -20,6 +20,12 @@ class AssistantActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // If the main activity is already running, finish this activity
+        if (GoslingApplication.isMainActivityRunning) {
+            finish()
+            return
+        }
+
         window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
         window.attributes.apply {

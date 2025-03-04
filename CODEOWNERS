@@ -10,7 +10,9 @@
 
 # These owners will be the default owners for everything in the repo.
 *       @GITHUB_USER_NAME_GOES_HERE
-
+@michaelneale
+@DOsinga
+@wesbillman
 
 # -----------------------------------------------
 # BELOW THIS LINE ARE TEMPLATES, UNUSED
@@ -22,3 +24,4 @@
 
 # You can also use email addresses if you prefer.
 # docs/*  docs@example.com
+

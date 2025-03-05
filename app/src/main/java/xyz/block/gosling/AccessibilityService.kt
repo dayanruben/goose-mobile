@@ -2,10 +2,12 @@ package xyz.block.gosling
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.app.NotificationCompat
@@ -76,9 +78,63 @@ class GoslingAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        // Handle accessibility events if needed
-    }
+        val agent = Agent.getInstance() ?: return
+        if (event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            val parcelableData = event.parcelableData
+            if (parcelableData is Notification) {
+                val packageName = event.packageName?.toString() ?: return
+                if (packageName == "xyz.block.gosling") return
 
+                val rawText = event.text?.joinToString(" ") ?: ""
+                val extras = parcelableData.extras
+
+                if (extras == null) {
+                    agent.handleNotification(
+                        packageName = packageName,
+                        title = "",
+                        content = rawText,
+                        context = "",
+                        image = null,
+                        timestamp = parcelableData.`when`,
+                        category = parcelableData.category ?: "",
+                        actions = emptyList()
+                    )
+                    return
+                }
+
+                val title = extras.getString(Notification.EXTRA_TITLE_BIG)
+                    ?: extras.getString(Notification.EXTRA_TITLE)
+                    ?: ""
+
+                val content = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                    ?: rawText
+
+                val context = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT)?.toString()
+                    ?: ""
+
+                val largeIcon = extras.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON)
+                val picture = extras.getParcelable<Bitmap>(Notification.EXTRA_PICTURE)
+                val image = picture ?: largeIcon
+
+                val actions = parcelableData.actions?.map { action ->
+                    action.title.toString()
+                } ?: emptyList()
+
+                agent.handleNotification(
+                    packageName = packageName,
+                    title = title,
+                    content = content,
+                    context = context,
+                    image = image,
+                    timestamp = parcelableData.`when`,
+                    category = parcelableData.category ?: "",
+                    actions = actions
+                )
+            }
+        }
+    }
     override fun onInterrupt() {
         // Handle interruptions if needed
     }

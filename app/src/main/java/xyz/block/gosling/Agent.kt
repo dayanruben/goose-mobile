@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -98,7 +99,7 @@ class Agent : Service() {
         val tool_calls: List<Map<String, Any>>? = null
     )
 
-    suspend fun processCommand(userInput: String, context: Context, onStatusUpdate: (String) -> Unit): String {
+    suspend fun processCommand(userInput: String, context: Context, isNotificationReply: Boolean, onStatusUpdate: (String) -> Unit): String {
         val availableIntents = IntentScanner.getAvailableIntents(context)
         val installedApps = availableIntents.joinToString("\n") { it.formatForLLM() }
 
@@ -109,8 +110,10 @@ class Agent : Service() {
         val width = displayMetrics.widthPixels
         val height = displayMetrics.heightPixels
 
+        val role = if (isNotificationReply) "helping the user process android notifications" else "managing the users android phone"
+
         val systemMessage = """
-            You are an assistant managing the users android phone. The user does not have access to the phone. 
+            You are an assistant $role. The user does not have access to the phone. 
             You will autonomously complete complex tasks on the phone and report back to the user when 
             done. NEVER ask the user for additional information or choices - you must decide and act on your own.
             
@@ -216,6 +219,49 @@ class Agent : Service() {
             }
             ""
         }
+    }
+
+    fun handleNotification(
+        packageName: String,
+        title: String,
+        content: String,
+        context: String,
+        image: Bitmap?,
+        timestamp: Long,
+        category: String,
+        actions: List<String>
+    ) {
+        scope.launch {
+            val prompt = """
+                Here's the notification:
+                App: $packageName
+                Title: $title
+                Content: $content
+                Category: $category
+                
+                Please analyze this notification and take appropriate action if needed.
+            """.trimIndent()
+            
+            processCommand(
+                prompt,
+                this@Agent,
+                isNotificationReply = true
+            ) { status ->
+                updateNotification("Processing notification: $status")
+            }
+        }
+    }
+
+    private fun updateNotification(status: String) {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("Gosling Agent")
+            .setContentText(status)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setOngoing(true)
+            .build()
+
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
     private fun callLlm(messages: List<Message>, context: Context): JSONObject {
@@ -362,4 +408,5 @@ class Agent : Service() {
             }
         }
     }
+
 }

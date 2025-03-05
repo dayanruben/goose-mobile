@@ -102,7 +102,7 @@ fun GoslingUI(
                 }
 
                 val response = async {
-                    service.processCommand(input, context) { status ->
+                    service.processCommand(input, context, isNotificationReply = false) { status ->
                         outputText = status
                         Log.d("Agent", "Status update: $status")
                     }

@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Switch
 
 enum class SetupStep {
     WELCOME,
@@ -430,6 +431,7 @@ fun SettingsScreen(
 ) {
     var llmModel by remember { mutableStateOf(settingsManager.llmModel) }
     var apiKey by remember { mutableStateOf(settingsManager.apiKey) }
+    var shouldProcessNotifications by remember { mutableStateOf(settingsManager.shouldProcessNotifications) }
     var showResetDialog by remember { mutableStateOf(false) }
 
     val models = listOf(
@@ -461,36 +463,63 @@ fun SettingsScreen(
                 text = "Settings",
                 style = MaterialTheme.typography.titleLarge
             )
-            // Empty box for alignment
             Box(modifier = Modifier.width(48.dp))
         }
 
-        // Accessibility Settings Section
+        // Conditional Settings Section
         Column(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                text = "Accessibility Permissions",
-                style = MaterialTheme.typography.titleLarge
-            )
-            Text(
-                text = "Gosling needs accessibility permissions to interact with other apps and help you with tasks.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Button(
-                onClick = openAccessibilitySettings,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isAccessibilityEnabled,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isAccessibilityEnabled)
-                        MaterialTheme.colorScheme.secondary
-                    else
-                        MaterialTheme.colorScheme.primary
+            if (isAccessibilityEnabled) {
+                Text(
+                    text = "Notification Processing",
+                    style = MaterialTheme.typography.titleLarge
                 )
-            ) {
-                Text(if (isAccessibilityEnabled) "Accessibility Enabled" else "Enable Accessibility")
+                Text(
+                    text = "Allow Gosling to analyze and respond to notifications from other apps",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Process notifications",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Switch(
+                        checked = shouldProcessNotifications,
+                        onCheckedChange = { 
+                            shouldProcessNotifications = it
+                            settingsManager.shouldProcessNotifications = it
+                        }
+                    )
+                }
+            } else {
+                Text(
+                    text = "Accessibility Permissions",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(
+                    text = "Gosling needs accessibility permissions to interact with other apps and help you with tasks.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Button(
+                    onClick = openAccessibilitySettings,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isAccessibilityEnabled,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isAccessibilityEnabled)
+                            MaterialTheme.colorScheme.secondary
+                        else
+                            MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(if (isAccessibilityEnabled) "Accessibility Enabled" else "Enable Accessibility")
+                }
             }
         }
 

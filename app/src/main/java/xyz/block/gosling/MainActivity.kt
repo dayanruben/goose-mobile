@@ -1,8 +1,11 @@
 package xyz.block.gosling
 
 import GoslingUI
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -45,6 +48,10 @@ import xyz.block.gosling.ui.theme.GoslingTheme
 import xyz.block.gosling.ui.theme.LocalGoslingColors
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        private const val REQUEST_NOTIFICATION_PERMISSION = 1234
+    }
+
     private lateinit var settingsManager: SettingsManager
     private lateinit var accessibilitySettingsLauncher: ActivityResultLauncher<Intent>
     private var isAccessibilityEnabled by mutableStateOf(false)
@@ -79,6 +86,12 @@ class MainActivity : ComponentActivity() {
                         isAccessibilityEnabled = isAccessibilityEnabled
                     )
                 }
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATION_PERMISSION)
             }
         }
     }

@@ -13,6 +13,7 @@ class SettingsManager(context: Context) {
         private const val KEY_API_KEY = "api_key"
         private const val KEY_ACCESSIBILITY_ENABLED = "accessibility_enabled"
         private const val DEFAULT_LLM_MODEL = "gpt-4o"
+        private const val KEY_PROCESS_NOTIFICATIONS = "process_notifications"
     }
 
     var isFirstTime: Boolean
@@ -30,6 +31,10 @@ class SettingsManager(context: Context) {
     var isAccessibilityEnabled: Boolean
         get() = prefs.getBoolean(KEY_ACCESSIBILITY_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_ACCESSIBILITY_ENABLED, value).apply()
+
+    var shouldProcessNotifications: Boolean
+        get() = prefs.getBoolean(KEY_PROCESS_NOTIFICATIONS, false)
+        set(value) = prefs.edit().putBoolean(KEY_PROCESS_NOTIFICATIONS, value).apply()
 
     fun hasValidConfig(): Boolean {
         return llmModel.isNotEmpty() && apiKey.isNotEmpty()

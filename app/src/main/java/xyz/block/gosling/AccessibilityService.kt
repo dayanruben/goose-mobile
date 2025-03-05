@@ -78,8 +78,11 @@ class GoslingAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
-        val agent = Agent.getInstance() ?: return
         if (event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            if (!SettingsManager(this).shouldProcessNotifications) return
+
+            val notification = event.parcelableData
+            val agent = Agent.getInstance() ?: return
             val parcelableData = event.parcelableData
             if (parcelableData is Notification) {
                 val packageName = event.packageName?.toString() ?: return

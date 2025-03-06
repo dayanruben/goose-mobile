@@ -103,13 +103,9 @@ fun SettingsScreen(
         }
     }
 
-    val models = listOf(
-        "gpt-4o" to "GPT-4 Optimized",
-        "o3-mini" to "O3 Mini",
-        "o3-small" to "O3 Small",
-        "o3-medium" to "O3 Medium",
-        "o3-large" to "O3 Large"
-    )
+    val models = AiModel.AVAILABLE_MODELS.map {
+        it.identifier to it.displayName
+    }
 
     Scaffold(
         topBar = {

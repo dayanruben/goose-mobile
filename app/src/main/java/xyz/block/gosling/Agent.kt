@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import xyz.block.gosling.ToolHandler.callTool
+import xyz.block.gosling.ToolHandler.getToolDefinitions
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.pow
@@ -109,7 +111,7 @@ class Agent : Service() {
         val content: Any?,
         val tool_call_id: String? = null,
         val name: String? = null,
-        val tool_calls: List<Map<String, Any>>? = null
+        val tool_calls: List<ToolCall>? = null
     )
 
     suspend fun processCommand(
@@ -182,7 +184,6 @@ class Agent : Service() {
             while (true) {
                 var response: JSONObject?
                 try {
-                    // Add exponential backoff delay for retries
                     if (retryCount > 0) {
                         val delayMs = (2.0.pow(retryCount.toDouble()) * 1000).toLong()
                         delay(delayMs)
@@ -190,7 +191,7 @@ class Agent : Service() {
                     }
 
                     response = callLlm(messages, context)
-                    retryCount = 0 // Reset retry count on successful call
+                    retryCount = 0
                 } catch (e: AgentException) {
                     retryCount++
 
@@ -203,13 +204,40 @@ class Agent : Service() {
                 }
 
                 try {
-                    val assistantMessage =
-                        response.getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-                    val assistantReply = assistantMessage.optString("content", "Ok")
+                    val (assistantReply, toolCalls) = when {
+                        response.has("choices") -> {
+                            val assistantMessage = response.getJSONArray("choices").getJSONObject(0)
+                                .getJSONObject("message")
+                            val content = assistantMessage.optString("content", "Ok")
+                            val tools = assistantMessage.optJSONArray("tool_calls")?.let {
+                                List(it.length()) { i -> ToolHandler.fromJson(it.getJSONObject(i)) }
+                            }
+                            Pair(content, tools)
+                        }
+
+                        response.has("candidates") -> {
+                            val candidate = response.getJSONArray("candidates").getJSONObject(0)
+                            val content = candidate.getJSONObject("content")
+                            val text = content.getJSONArray("parts").getJSONObject(0)
+                                .optString("text", "Ok")
+
+                            val tools = content.optJSONArray("parts")?.let { parts ->
+                                List(parts.length()) { i ->
+                                    val part = parts.getJSONObject(i)
+                                    if (part.has("functionCall")) {
+                                        ToolHandler.fromJson(part)
+                                    } else null
+                                }.filterNotNull()
+                            }
+                            Pair(text, tools)
+                        }
+
+                        else -> Pair("Unknown response format", null)
+                    }
 
                     onStatusUpdate(AgentStatus.Processing(assistantReply))
 
-                    val toolResults = parseAndExecuteTool(response, context)
+                    val toolResults = executeTools(toolCalls, context)
                     if (toolResults.isEmpty()) {
                         onStatusUpdate(AgentStatus.Success(assistantReply))
                         break
@@ -218,10 +246,8 @@ class Agent : Service() {
                     messages.add(
                         Message(
                             role = "assistant",
-                            content = assistantMessage.optString("content"),
-                            tool_calls = assistantMessage.optJSONArray("tool_calls")?.let {
-                                List(it.length()) { i -> jsonObjectToMap(it.getJSONObject(i)) }
-                            }
+                            content = assistantReply,
+                            tool_calls = toolCalls
                         )
                     )
 
@@ -263,7 +289,7 @@ class Agent : Service() {
                 Please analyze this notification and take appropriate action if needed.
             """.trimIndent()
 
-            val result = processCommand(
+            processCommand(
                 prompt,
                 this@Agent,
                 isNotificationReply = true
@@ -294,32 +320,69 @@ class Agent : Service() {
     }
 
     private fun callLlm(messages: List<Message>, context: Context): JSONObject {
-        val url = URL("https://api.openai.com/v1/chat/completions")
-        val connection = url.openConnection() as HttpURLConnection
+        val settings = SettingsManager(context)
+        val model = AiModel.fromIdentifier(settings.llmModel)
+        val apiKey = settings.apiKey
 
-        // Use the same preferences and keys as SettingsManager
-        val sharedPrefs = context.getSharedPreferences("gosling_prefs", Context.MODE_PRIVATE)
-        val model = sharedPrefs.getString("llm_model", "gpt-4o") ?: "gpt-4o"
-        val apiKey = sharedPrefs.getString("api_key", "") ?: ""
+        val url = when (model.provider) {
+            ModelProvider.OPENAI -> URL("https://api.openai.com/v1/chat/completions")
+            ModelProvider.GEMINI -> URL("https://generativelanguage.googleapis.com/v1beta/models/${model.identifier}:generateContent?key=$apiKey")
+        }
+
+        val connection = url.openConnection() as HttpURLConnection
 
         return try {
             connection.requestMethod = "POST"
-            connection.setRequestProperty("Authorization", "Bearer $apiKey")
             connection.setRequestProperty("Content-Type", "application/json")
+
+            if (model.provider == ModelProvider.OPENAI) {
+                connection.setRequestProperty("Authorization", "Bearer $apiKey")
+            }
+
             connection.doOutput = true
 
-            val messagesJsonArray = JSONArray()
-            messages.forEach { message ->
-                messagesJsonArray.put(messageToJson(message))
-            }
+            val requestBody = when (model.provider) {
+                ModelProvider.OPENAI -> {
+                    val messagesJsonArray = JSONArray()
+                    messages.forEach { message ->
+                        messagesJsonArray.put(messageToJson(message))
+                    }
 
-            val requestBody = JSONObject()
-            requestBody.put("model", model)
-            requestBody.put("messages", messagesJsonArray)
-            if (model != "o3-mini") {
-                requestBody.put("temperature", 0.1)
+                    JSONObject().apply {
+                        put("model", model.identifier)
+                        put("messages", messagesJsonArray)
+                        if (model.identifier != "o3-mini") {
+                            put("temperature", 0.1)
+                        }
+                        put("tools", getToolDefinitions(model.provider).toJSONArray())
+                    }
+                }
+
+                ModelProvider.GEMINI -> {
+                    val combinedText = messages.joinToString("\n") {
+                        "${it.role}: ${it.content}"
+                    }
+
+                    // Create proper JSON structure - following Google's example
+                    val toolsDefinitions =
+                        getToolDefinitions(model.provider)
+                    val toolsArray = JSONArray()
+
+                    for (toolDef in toolsDefinitions) {
+                        toolsArray.put(convertMapToJson(toolDef))
+                    }
+
+                    JSONObject().apply {
+                        put("contents", JSONObject().apply {
+                            put("role", "user")  // Adding role as in the example
+                            put("parts", JSONObject().apply {
+                                put("text", combinedText)
+                            })
+                        })
+                        put("tools", toolsArray)
+                    }
+                }
             }
-            requestBody.put("tools", getToolDefinitions().toJSONArray())
 
             connection.outputStream.write(requestBody.toString().toByteArray())
 
@@ -357,26 +420,20 @@ class Agent : Service() {
         }
     }
 
-    private fun parseAndExecuteTool(
-        response: JSONObject,
+
+    private fun executeTools(
+        toolCalls: List<ToolCall>?,
         context: Context
     ): List<Map<String, String>> {
-        val assistantMessage = response.getJSONArray("choices")
-            .getJSONObject(0)
-            .getJSONObject("message")
+        if (toolCalls == null) return emptyList()
 
-        val toolCalls = assistantMessage.optJSONArray("tool_calls") ?: return emptyList()
-        val toolResults = mutableListOf<Map<String, String>>()
-
-        for (i in 0 until toolCalls.length()) {
-            val toolCall = toolCalls.getJSONObject(i)
-            val toolCallId = toolCall.getString("id")
-
+        return toolCalls.map { toolCall ->
             val result = callTool(toolCall, context, GoslingAccessibilityService.getInstance())
-            toolResults.add(mapOf("tool_call_id" to toolCallId, "output" to result))
+            mapOf(
+                "tool_call_id" to toolCall.name,
+                "output" to result
+            )
         }
-
-        return toolResults
     }
 
     private fun messageToJson(message: Message): JSONObject {
@@ -390,7 +447,7 @@ class Agent : Service() {
         message.tool_calls?.let {
             val toolCallsJson = JSONArray()
             it.forEach { toolCall ->
-                toolCallsJson.put(toolCall.toJSONObject())
+                toolCallsJson.put((toolCall as Map<String, Any>).toJSONObject())
             }
             json.put("tool_calls", toolCallsJson)
         }
@@ -443,5 +500,37 @@ class Agent : Service() {
                 else -> value
             }
         }
+    }
+
+    private fun convertMapToJson(map: Map<String, Any>): JSONObject {
+        val json = JSONObject()
+
+        for ((key, value) in map) {
+            when (value) {
+                is Map<*, *> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    json.put(key, convertMapToJson(value as Map<String, Any>))
+                }
+
+                is List<*> -> {
+                    val jsonArray = JSONArray()
+                    for (item in value) {
+                        when (item) {
+                            is Map<*, *> -> {
+                                @Suppress("UNCHECKED_CAST")
+                                jsonArray.put(convertMapToJson(item as Map<String, Any>))
+                            }
+
+                            else -> jsonArray.put(item)
+                        }
+                    }
+                    json.put(key, jsonArray)
+                }
+
+                else -> json.put(key, value)
+            }
+        }
+
+        return json
     }
 }

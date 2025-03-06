@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
@@ -30,6 +31,10 @@ annotation class ParameterDef(
     val required: Boolean = true
 )
 
+data class ToolCall(
+    val name: String,
+    val arguments: JSONObject
+)
 
 object ToolHandler {
     /**
@@ -337,64 +342,118 @@ object ToolHandler {
         }
     }
 
-    fun getToolDefinitions(): List<Map<String, Any>> {
-        return ToolHandler::class.java.methods
+    fun getToolDefinitions(provider: ModelProvider): List<Map<String, Any>> {
+        val methods = ToolHandler::class.java.methods
             .filter { it.isAnnotationPresent(Tool::class.java) }
-            .map { method ->
-                val tool = method.getAnnotation(Tool::class.java)
 
-                val parametersMap = if (tool != null && tool.parameters.isNotEmpty()) {
-                    val properties = tool.parameters.associate { param ->
-                        param.name to mapOf(
-                            "type" to param.type,
-                            "description" to param.description
+        return when (provider) {
+            ModelProvider.OPENAI -> {
+                methods.map { method ->
+                    val tool = method.getAnnotation(Tool::class.java)
+
+                    val parametersMap = if (tool.parameters.isNotEmpty()) {
+                        val properties = tool.parameters.associate { param ->
+                            param.name to mapOf(
+                                "type" to param.type,
+                                "description" to param.description
+                            )
+                        }
+
+                        val required = tool.parameters
+                            .filter { it.required }
+                            .map { it.name }
+
+                        mapOf(
+                            "type" to "object",
+                            "properties" to properties,
+                            "required" to required
                         )
-                    }
-
-                    val required = tool.parameters
-                        .filter { it.required }
-                        .map { it.name }
+                    } else null
 
                     mapOf(
-                        "type" to "object",
-                        "properties" to properties,
-                        "required" to required
+                        "type" to "function",
+                        "function" to mapOf(
+                            "name" to tool.name,
+                            "description" to tool.description
+                        ).let {
+                            if (parametersMap != null)
+                                it + ("parameters" to parametersMap)
+                            else it
+                        }
                     )
-                } else null
+                }
+            }
 
-                mapOf(
-                    "type" to "function",
-                    "function" to mapOf(
-                        "name" to tool?.name,
-                        "description" to tool?.description
-                    ).let {
-                        if (parametersMap != null)
-                            it + ("parameters" to parametersMap)
-                        else it
+            ModelProvider.GEMINI -> {
+                // Single tool object with function_declarations array
+                val functionDeclarations = methods.map { method ->
+                    val tool = method.getAnnotation(Tool::class.java)
+
+                    // For functions with no parameters, we use a different approach
+                    if (tool.parameters.isEmpty()) {
+                        // Just return name and description for functions with no parameters
+                        mapOf(
+                            "name" to tool.name,
+                            "description" to tool.description
+                        )
+                    } else {
+                        // For functions with parameters, include the parameters object
+                        val properties = mutableMapOf<String, Any>()
+                        val required = mutableListOf<String>()
+
+                        tool.parameters.forEach { param ->
+                            properties[param.name] = mapOf(
+                                "type" to when (param.type.lowercase(Locale.getDefault())) {
+                                    "integer" -> "string" // Use string for integers
+                                    "boolean" -> "boolean"
+                                    "string" -> "string"
+                                    "double", "float" -> "number"
+                                    else -> "string"
+                                },
+                                "description" to param.description
+                            )
+
+                            if (param.required) {
+                                required.add(param.name)
+                            }
+                        }
+
+                        val result = mutableMapOf(
+                            "name" to tool.name,
+                            "description" to tool.description,
+                            "parameters" to mapOf(
+                                "type" to "object",
+                                "properties" to properties
+                            )
+                        )
+
+                        if (required.isNotEmpty()) {
+                            (result["parameters"] as MutableMap<String, Any>)["required"] = required
+                        }
+
+                        result
                     }
+                }
+                listOf(
+                    mapOf(
+                        "function_declarations" to functionDeclarations
+                    )
                 )
             }
+        }
     }
 
-    /**
-     * Call a tool by name with provided arguments
-     */
     fun callTool(
-        toolCall: JSONObject,
+        toolCall: ToolCall,
         context: Context,
         accessibilityService: AccessibilityService?
     ): String {
-        val functionObject = toolCall.getJSONObject("function")
-        val functionName = functionObject.getString("name")
-        val argumentsString = functionObject.optString("arguments", "{}")
-        val arguments = JSONObject(argumentsString)
-
         val toolMethod = ToolHandler::class.java.methods
             .firstOrNull {
                 it.isAnnotationPresent(Tool::class.java) &&
-                        it?.getAnnotation(Tool::class.java)?.name == functionName
+                        it.getAnnotation(Tool::class.java).name == toolCall.name
             }
-            ?: return "Unknown tool call: $functionName"
+            ?: return "Unknown tool call: ${toolCall.name}"
 
         val toolAnnotation = toolMethod.getAnnotation(Tool::class.java)
 
@@ -404,7 +463,7 @@ object ToolHandler {
         Thread.sleep(100)
 
         return try {
-            if (toolAnnotation != null && toolAnnotation.requiresAccessibility) {
+            if (toolAnnotation.requiresAccessibility) {
                 if (accessibilityService == null) {
                     return "Accessibility service not available."
                 }
@@ -413,29 +472,45 @@ object ToolHandler {
                         ToolHandler,
                         accessibilityService,
                         context,
-                        arguments
+                        toolCall.arguments
                     ) as String
                 }
-                return toolMethod.invoke(ToolHandler, accessibilityService, arguments) as String
+                return toolMethod.invoke(
+                    ToolHandler,
+                    accessibilityService,
+                    toolCall.arguments
+                ) as String
             }
             if (toolAnnotation != null && toolAnnotation.requiresContext) {
-                return toolMethod.invoke(ToolHandler, context, arguments) as String
+                return toolMethod.invoke(ToolHandler, context, toolCall.arguments) as String
             }
-            val result = toolMethod.invoke(ToolHandler) as String
-
-            return result
+            return toolMethod.invoke(ToolHandler, toolCall.arguments) as String
         } catch (e: Exception) {
-            "Error executing $functionName: ${e.message}"
+            "Error executing ${toolCall.name}: ${e.message}"
         } finally {
             OverlayService.getInstance()?.setPerformingAction(false)
         }
     }
+
+    fun fromJson(json: JSONObject): ToolCall {
+        return when {
+            json.has("function") -> {
+                val functionObject = json.getJSONObject("function")
+                ToolCall(
+                    name = functionObject.getString("name"),
+                    arguments = JSONObject(functionObject.optString("arguments", "{}"))
+                )
+            }
+
+            json.has("functionCall") -> {
+                val functionCall = json.getJSONObject("functionCall")
+                ToolCall(
+                    name = functionCall.getString("name"),
+                    arguments = functionCall.getJSONObject("args")
+                )
+            }
+
+            else -> throw IllegalArgumentException("Unknown tool call format")
+        }
+    }
 }
-
-fun getToolDefinitions(): List<Map<String, Any>> = ToolHandler.getToolDefinitions()
-
-fun callTool(
-    toolCall: JSONObject,
-    context: Context,
-    accessibilityService: AccessibilityService?
-): String = ToolHandler.callTool(toolCall, context, accessibilityService)

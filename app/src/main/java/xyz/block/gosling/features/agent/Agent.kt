@@ -23,6 +23,7 @@ import xyz.block.gosling.formatForLLM
 import xyz.block.gosling.features.agent.ToolHandler.callTool
 import xyz.block.gosling.features.agent.ToolHandler.getSerializableToolDefinitions
 import xyz.block.gosling.features.settings.SettingsManager
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.pow
@@ -34,6 +35,12 @@ sealed class AgentStatus {
     data class Success(val message: String) : AgentStatus()
     data class Error(val message: String) : AgentStatus()
 }
+
+data class MessageAnnotation(
+    val messageIndex: Int,
+    val annotations: Map<String, Double>
+)
+
 
 class Agent : Service() {
     private var job = SupervisorJob()
@@ -95,6 +102,7 @@ class Agent : Service() {
         context: Context,
         isNotificationReply: Boolean
     ): String {
+
         try {
             // Reset cancelled flag at the start of a new command
             isCancelled = false
@@ -161,12 +169,29 @@ class Agent : Service() {
                     content = userInput
                 )
             )
+            val messageAnnotations = mutableListOf<MessageAnnotation>()
+
+            fun addAnnotation(annotations: Map<String, Double>) {
+                val messageIndex = messages.size - 1
+                val existingAnnotation =
+                    messageAnnotations.firstOrNull { it.messageIndex == messageIndex }
+
+                if (existingAnnotation != null) {
+                    // Create new map combining existing and new annotations
+                    val updatedAnnotations = existingAnnotation.annotations + annotations
+                    messageAnnotations[messageAnnotations.indexOf(existingAnnotation)] =
+                        existingAnnotation.copy(annotations = updatedAnnotations)
+                } else {
+                    messageAnnotations.add(MessageAnnotation(messageIndex, annotations))
+                }
+            }
 
             updateStatus(AgentStatus.Processing("Thinking..."))
 
             return withContext(scope.coroutineContext) {
                 var retryCount = 0
                 val maxRetries = 3
+                val startTime = System.currentTimeMillis()
 
                 while (true) {
                     if (isCancelled) {
@@ -174,6 +199,7 @@ class Agent : Service() {
                         return@withContext "Operation cancelled by user"
                     }
 
+                    val startTimeLLMCall = System.currentTimeMillis()
                     var response: JSONObject?
                     try {
                         if (retryCount > 0) {
@@ -199,9 +225,10 @@ class Agent : Service() {
                         }
                         continue
                     }
+                    val llmDuration = (System.currentTimeMillis() - startTimeLLMCall) / 1000.0
 
                     try {
-                        val (assistantReply, toolCalls) = when {
+                        val (assistantReply, toolCalls, annotation) = when {
                             response.has("choices") -> {
                                 val assistantMessage =
                                     response.getJSONArray("choices").getJSONObject(0)
@@ -210,7 +237,13 @@ class Agent : Service() {
                                 val tools = assistantMessage.optJSONArray("tool_calls")?.let {
                                     List(it.length()) { i -> ToolHandler.fromJson(it.getJSONObject(i)) }
                                 }
-                                Pair(content, tools)
+                                val usage = response.getJSONObject("usage")
+                                val annotation = mapOf(
+                                    "duration" to llmDuration,
+                                    "input_tokens" to usage.getInt("prompt_tokens").toDouble(),
+                                    "output_tokens" to usage.getInt("completion_tokens").toDouble()
+                                )
+                                Triple(content, tools, annotation)
                             }
 
                             response.has("candidates") -> {
@@ -227,10 +260,13 @@ class Agent : Service() {
                                         } else null
                                     }.filterNotNull()
                                 }
-                                Pair(text, tools)
+                                val annotation = mapOf(
+                                    "duration" to llmDuration
+                                )
+                                Triple(text, tools, annotation)
                             }
 
-                            else -> Pair("Unknown response format", null)
+                            else -> Triple("Unknown response format", null, emptyMap())
                         }
 
                         updateStatus(AgentStatus.Processing(assistantReply))
@@ -240,16 +276,8 @@ class Agent : Service() {
                             return@withContext "Operation cancelled by user"
                         }
 
-                        val toolResults = executeTools(toolCalls, context)
-                        if (toolResults.isEmpty() || isCancelled) {
-                            if (isCancelled) {
-                                return@withContext "Operation cancelled by user"
-                            } else {
-                                break
-                            }
-                        }
+                        val (toolResults, toolAnnotations) = executeTools(toolCalls, context)
 
-                        // Create a map of tool calls with their IDs
                         val toolCallsWithIds = toolCalls?.mapIndexed { index, toolCall ->
                             val toolCallId = toolResults[index]["tool_call_id"]
                                 ?: "call_${System.currentTimeMillis()}_$index"
@@ -271,15 +299,27 @@ class Agent : Service() {
                                 }
                             )
                         )
+                        addAnnotation(annotation)
 
-                        for (result in toolResults) {
+                        if (toolResults.isEmpty() || isCancelled) {
+                            if (isCancelled) {
+                                updateStatus(AgentStatus.Success("Operation cancelled"))
+                                return@withContext "Operation cancelled by user"
+                            } else {
+                                updateStatus(AgentStatus.Success(assistantReply))
+                                break
+                            }
+                        }
+
+                        for ((result, toolAnnotation) in toolResults.zip(toolAnnotations)) {
                             messages.add(
                                 Message(
                                     role = "tool",
                                     toolCallId = result["tool_call_id"].toString(),
-                                    content = result["output"].toString()
+                                    content = result["output"].toString(),
                                 )
                             )
+                            addAnnotation(toolAnnotation)
                         }
                     } catch (e: Exception) {
                         Log.e("Agent", "Error processing response", e)
@@ -290,11 +330,39 @@ class Agent : Service() {
                     continue
                 }
 
-                updateStatus(AgentStatus.Success("Task completed successfully"))
-                return@withContext "Task completed successfully"
+                val sanitizedCommand = userInput.take(50)
+                    .replace(Regex("[^a-zA-Z0-9]"), "_")
+                    .lowercase()
+
+                context.getExternalFilesDir(null)?.let { filesDir ->
+                    val conversationsDir = File(filesDir, "session_dumps")
+                    conversationsDir.mkdirs()
+
+                    val statsMessage = calculateConversationStats(messageAnnotations, startTime)
+
+                    val annotatedMessages = messages.mapIndexed { index, message ->
+                        val annotations = messageAnnotations
+                            .firstOrNull { it.messageIndex == index }
+                            ?.annotations ?: emptyMap()
+                        message.copy(annotations = annotations)
+                    }
+
+                    val messagesWithStats = listOf(statsMessage) + annotatedMessages
+
+                    File(conversationsDir, "${sanitizedCommand}.json").writeText(Json {
+                        prettyPrint = true
+                        encodeDefaults = true
+                    }.encodeToString(messagesWithStats))
+                }
+
+                val completionMessage =
+                    "Task completed successfully in %.1f seconds".format(
+                        (System.currentTimeMillis() - startTime) / 1000.0
+                    )
+                updateStatus(AgentStatus.Success(completionMessage))
+                return@withContext completionMessage
             }
         } catch (e: Exception) {
-            // Handle any unexpected exceptions
             Log.e("Agent", "Error executing command", e)
 
             // If it's a cancellation exception, handle it gracefully
@@ -306,7 +374,6 @@ class Agent : Service() {
                 return "Operation cancelled by user"
             }
 
-            // For other exceptions, report the error
             val errorMsg = "Error: ${e.message}"
             updateStatus(AgentStatus.Error(errorMsg))
             return errorMsg
@@ -376,7 +443,6 @@ class Agent : Service() {
 
             connection.doOutput = true
 
-            // Create a Json instance with pretty printing for debugging
             val json = Json {
                 prettyPrint = true
                 ignoreUnknownKeys = true
@@ -477,23 +543,57 @@ class Agent : Service() {
     private fun executeTools(
         toolCalls: List<InternalToolCall>?,
         context: Context
-    ): List<Map<String, String>> {
-        if (toolCalls == null || isCancelled) return emptyList()
+    ): Pair<List<Map<String, String>>, List<Map<String, Double>>> {
+        if (toolCalls == null || isCancelled) return Pair(emptyList(), emptyList())
 
-        return toolCalls.mapIndexed { index, toolCall ->
+        val annotations: MutableList<Map<String, Double>> = mutableListOf()
+
+        val results = toolCalls.mapIndexed { index, toolCall ->
             if (isCancelled) {
+                annotations.add(emptyMap())
                 return@mapIndexed mapOf(
                     "tool_call_id" to "cancelled_${System.currentTimeMillis()}_$index",
                     "output" to "Operation cancelled by user"
                 )
             }
 
-            val toolCallId = "call_${System.currentTimeMillis()}_$index"  // Generate a unique ID
+            val toolCallId = "call_${System.currentTimeMillis()}_$index"
+            val startTime = System.currentTimeMillis()
             val result = callTool(toolCall, context, GoslingAccessibilityService.getInstance())
+            annotations.add(mapOf("duration" to (System.currentTimeMillis() - startTime) / 1000.0))
             mapOf(
                 "tool_call_id" to toolCallId,
                 "output" to result
             )
         }
+        return Pair(results, annotations)
+    }
+
+    private fun calculateConversationStats(
+        messageAnnotations: List<MessageAnnotation>,
+        startTime: Long
+    ): Message {
+        val totalInputTokens = messageAnnotations.sumOf { annotation ->
+            annotation.annotations["input_tokens"] ?: 0.0
+        }
+        val totalOutputTokens = messageAnnotations.sumOf { annotation ->
+            annotation.annotations["output_tokens"] ?: 0.0
+        }
+        val totalTime = (System.currentTimeMillis() - startTime) / 1000.0
+        val summedAnnotationTime = messageAnnotations.sumOf { annotation ->
+            annotation.annotations["duration"] ?: 0.0
+        }
+
+        return Message(
+            role = "stats",
+            content = "Conversation Statistics",
+            annotations = mapOf(
+                "total_input_tokens" to totalInputTokens,
+                "total_output_tokens" to totalOutputTokens,
+                "total_wall_time" to totalTime,
+                "total_annotated_time" to summedAnnotationTime,
+                "time_coverage_percentage" to (summedAnnotationTime / totalTime * 100)
+            )
+        )
     }
 }

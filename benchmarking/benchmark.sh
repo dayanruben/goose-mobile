@@ -3,6 +3,10 @@
 # Benchmark script for running all scenario scripts and recording results
 # Created: $(date)
 
+# Source common functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/benchmark_common.sh"
+
 echo "======================================"
 echo "Gosling Benchmarking Tool"
 echo "======================================"
@@ -18,50 +22,44 @@ return_to_gosling() {
     # Try different possible package names for the Gosling app
     echo "Attempting to launch Gosling app..."
     
-    # First try with com.block.gosling
-    if adb shell pm list packages | grep -q "com.block.gosling"; then
-        echo "Found package: com.block.gosling"
-        adb shell monkey -p com.block.gosling -c android.intent.category.LAUNCHER 1
-    # Try with com.block.goose
-    elif adb shell pm list packages | grep -q "com.block.goose"; then
-        echo "Found package: com.block.goose"
-        adb shell monkey -p com.block.goose -c android.intent.category.LAUNCHER 1
-    # Try with com.gosling
-    elif adb shell pm list packages | grep -q "com.gosling"; then
-        echo "Found package: com.gosling"
-        adb shell monkey -p com.gosling -c android.intent.category.LAUNCHER 1
-    # Try with gosling
-    elif adb shell pm list packages | grep -q "gosling"; then
-        PACKAGE=$(adb shell pm list packages | grep "gosling" | head -1 | sed 's/package://')
-        echo "Found package: $PACKAGE"
-        adb shell monkey -p $PACKAGE -c android.intent.category.LAUNCHER 1
-    # If we can't find it, try to list all packages and look for likely candidates
-    else
-        echo "Could not find Gosling package. Listing all packages:"
-        adb shell pm list packages
-        echo "WARNING: Could not automatically launch Gosling app. Please launch it manually."
-        # Give user time to manually launch the app
-        sleep 5
-    fi
-    
+    adb shell monkey -p "xyz.block.gosling" -c android.intent.category.LAUNCHER 1
+
     # Wait for app to launch
     sleep 2
+}
+
+# Function to collect diagnostic data after each test
+collect_diagnostics() {
+    local test_dir="$1"
+    echo "Collecting diagnostic data..."
+    
+    # Create test directory if it doesn't exist
+    mkdir -p "$test_dir"
+    
+    # Pull session dumps
+    echo "Pulling session dumps..."
+    DUMPS_DIR="${test_dir}/session_dumps"
+    mkdir -p "$DUMPS_DIR"
+    adb pull /storage/emulated/0/Android/data/xyz.block.gosling/files/session_dumps/ "${DUMPS_DIR}/" > /dev/null 2>&1
+    
+    # Take screenshot
+    echo "Taking screenshot..."
+    adb shell screencap -p /sdcard/screen.png
+    adb pull /sdcard/screen.png "${test_dir}/screenshot.png" > /dev/null 2>&1
+    adb shell rm /sdcard/screen.png
+    
+    # Dump UI hierarchy
+    echo "Dumping UI hierarchy..."
+    adb shell uiautomator dump
+    adb pull /sdcard/window_dump.xml "${test_dir}/window_dump.xml" > /dev/null 2>&1
+    adb shell rm /sdcard/window_dump.xml
+    
+    echo "Diagnostic data collection complete, look in benchmark_results"
 }
 
 # Create results directory if it doesn't exist
 RESULTS_DIR="benchmark_results"
 mkdir -p "$RESULTS_DIR"
-
-# Results file with timestamp
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-RESULTS_FILE="$RESULTS_DIR/benchmark_results_$TIMESTAMP.txt"
-
-# CSV for easy parsing
-CSV_FILE="$RESULTS_DIR/benchmark_results_$TIMESTAMP.csv"
-
-# Initialize results files
-echo "Benchmark Results - $(date)" > "$RESULTS_FILE"
-echo "Scenario,Status,Time (seconds)" > "$CSV_FILE"
 
 # Find all scenario scripts
 SCENARIO_SCRIPTS=$(find . -name "scenario_*.sh" -type f | sort)
@@ -94,70 +92,36 @@ for script in $SCENARIO_SCRIPTS; do
     echo "Running scenario: $SCENARIO_NAME"
     echo "======================================"
     
+    # Create test-specific directory for diagnostics
+    TEST_DIR="$RESULTS_DIR/${SCENARIO_NAME}"
+    rm -rf "$TEST_DIR"
+    mkdir -p "$TEST_DIR"
+    
     # Make sure the script is executable
     chmod +x "$script"
     
     # Return to Gosling app before running the scenario
     return_to_gosling
+
+    # clear out old session dumps:
+     adb shell rm -rf /storage/emulated/0/Android/data/xyz.block.gosling/files/session_dumps/
     
     # Run the script and capture output
     OUTPUT=$(bash "$script" 2>&1)
-    EXIT_CODE=$?
     
-    # Check if the script was successful
-    if [ $EXIT_CODE -eq 0 ] && echo "$OUTPUT" | grep -q "SUCCESS"; then
-        # Extract the time from the output
-        TIME=$(echo "$OUTPUT" | grep -o "SUCCESS.*time: [0-9.]*" | grep -o "[0-9.]*$")
-        
-        if [ -z "$TIME" ]; then
-            # Try alternative format
-            TIME=$(echo "$OUTPUT" | grep -o "found after [0-9.]* seconds" | grep -o "[0-9.]*")
-        fi
-        
-        if [ -n "$TIME" ]; then
-            STATUS="SUCCESS"
-            SUCCESSFUL=$((SUCCESSFUL+1))
-            echo "✅ Success - Time: $TIME seconds"
-            
-            # Add to results file
-            echo "- $SCENARIO_NAME: SUCCESS - $TIME seconds" >> "$RESULTS_FILE"
-            echo "$SCENARIO_NAME,SUCCESS,$TIME" >> "$CSV_FILE"
-        else
-            STATUS="SUCCESS (time not found)"
-            echo "✅ Success - Time: unknown"
-            
-            # Add to results file
-            echo "- $SCENARIO_NAME: SUCCESS - time not found" >> "$RESULTS_FILE"
-            echo "$SCENARIO_NAME,SUCCESS,N/A" >> "$CSV_FILE"
-        fi
+    # Save the script output to the test directory
+    echo "$OUTPUT" > "$TEST_DIR/script_output.txt"
+
+
+    # Collect diagnostics after test completes
+    collect_diagnostics "$TEST_DIR"
+    
+    # Check if goose binary is available
+    if command -v goose &> /dev/null; then
+        echo "Running goose analysis..."
+        goose run --text "look in ${TEST_DIR} at the session_dumps, look at last result and consider it with the screenshot.png and window_dump.xml if needed, and conclude if test was successful or not, return 'STATUS:PASS/FAIL, TIME:number of seconds'. Add to analysis.txt in that dir"
     else
-        STATUS="FAILED"
-        echo "❌ Failed"
-        
-        # Add to results file
-        echo "- $SCENARIO_NAME: FAILED" >> "$RESULTS_FILE"
-        echo "$SCENARIO_NAME,FAILED,N/A" >> "$CSV_FILE"
+        echo "PLEASE INSTALL GOOSE FOR MORE ANALYSIS OF RESULTS"
     fi
     
-    echo
 done
-
-# Summary
-echo "======================================"
-echo "Benchmark Summary"
-echo "======================================"
-echo "Total scenarios: $TOTAL"
-echo "Successful: $SUCCESSFUL"
-echo "Failed: $((TOTAL-SUCCESSFUL))"
-echo
-echo "Results saved to: $RESULTS_FILE"
-echo "CSV data saved to: $CSV_FILE"
-echo "======================================"
-
-# Print successful scenarios with their times
-if [ $SUCCESSFUL -gt 0 ]; then
-    echo
-    echo "Successful Scenarios:"
-    echo "------------------------------------"
-    grep "SUCCESS" "$RESULTS_FILE" | sort
-fi

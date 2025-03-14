@@ -1,6 +1,7 @@
 package xyz.block.gosling.features.agent
 
 import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
@@ -509,7 +510,7 @@ class Agent : Service() {
             val requestBody = when (model.provider) {
                 ModelProvider.OPENAI -> {
                     val toolDefinitions =
-                        when (val result = getSerializableToolDefinitions(model.provider)) {
+                        when (val result = getSerializableToolDefinitions(context, model.provider)) {
                             is SerializableToolDefinitions.OpenAITools -> result.definitions
                             else -> emptyList() // This should never happen for OpenAI
                         }
@@ -529,7 +530,7 @@ class Agent : Service() {
                         "${it.role}: ${it.content}"
                     }
 
-                    val tools = when (val result = getSerializableToolDefinitions(model.provider)) {
+                    val tools = when (val result = getSerializableToolDefinitions(context, model.provider)) {
                         is SerializableToolDefinitions.GeminiTools -> result.tools
                         else -> emptyList()
                     }

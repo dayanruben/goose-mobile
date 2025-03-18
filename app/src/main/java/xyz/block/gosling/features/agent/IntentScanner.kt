@@ -86,10 +86,16 @@ object IntentScanner {
         }
 
         return intentActions.map { (packageName, actions) ->
+            // Determine the kind of app based on package name
+            val category = IntentAppKinds.getCategoryForPackage(packageName)
+            System.out.println("App package " + packageName)
+            val kind = category?.name ?: "other"
+            
             IntentDefinition(
                 packageName = packageName,
                 appLabel = appLabels[packageName] ?: "Unknown App",
-                actions = actions
+                actions = actions,
+                kind = kind
             )
         }
     }
@@ -112,7 +118,6 @@ object IntentScanner {
         return urls
     }
 
-
     private fun extractExtrasForAction(
         action: String
     ): Pair<List<String>, List<String>> {
@@ -129,11 +134,11 @@ object IntentScanner {
     }
 }
 
-
 data class IntentDefinition(
     val packageName: String,
     val appLabel: String,
-    val actions: List<IntentActionDefinition>
+    val actions: List<IntentActionDefinition>,
+    val kind: String = "other" // Default value is "other"
 )
 
 data class IntentActionDefinition(
@@ -141,15 +146,3 @@ data class IntentActionDefinition(
     val requiredParameters: List<String>,
     val optionalParameters: List<String>
 )
-
-fun IntentDefinition.formatForLLM(): String {
-    // TODO: Use the full intent. For now just return the label and name
-    return "$appLabel: $packageName"
-//    val actionsFormatted = actions.joinToString("\n    ") { action ->
-//        val required = action.requiredParameters.joinToString(", ")
-//        val optional = action.optionalParameters.joinToString(", ", "[", "]").takeIf { it.length > 2 } ?: ""
-//        "${action.action}($required$optional)"
-//    }
-//    return "$appLabel: $packageName\nActions:\n    $actionsFormatted"
-}
-

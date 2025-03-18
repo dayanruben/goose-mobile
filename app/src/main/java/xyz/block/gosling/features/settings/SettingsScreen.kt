@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import xyz.block.gosling.features.agent.AgentServiceManager
 import xyz.block.gosling.features.agent.AiModel
+import xyz.block.gosling.features.agent.AppUsageStats
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +74,10 @@ fun SettingsScreen(
             "assistant"
         )
         isAssistantEnabled = settingSecure?.contains(context.packageName) == true
+    }
+
+    fun showStatsSettings(): () -> Unit {
+        return { AppUsageStats.requestPermission(context) }
     }
 
     // Check on initial launch
@@ -233,6 +238,14 @@ fun SettingsScreen(
                         )
                     }
                     if (isAccessibilityEnabled) {
+                        Button(
+                            onClick = showStatsSettings(),
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = true,
+                        ) {
+                            Text("Go to app stats settings")
+                        }
+
                         Text(
                             text = "Notification Processing",
                             style = MaterialTheme.typography.titleLarge,

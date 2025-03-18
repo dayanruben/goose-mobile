@@ -132,7 +132,7 @@ class Agent : Service() {
                 context,
                 GoslingAccessibilityService.getInstance()
             )
-            val installedApps = availableIntents.joinToString("\n|") { it.formatForLLM() }
+            val installedApps = IntentAppKinds.groupIntentsByCategory(availableIntents)
 
             val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             val displayMetrics = DisplayMetrics()
@@ -165,7 +165,9 @@ class Agent : Service() {
                 |$installedApps
                 |
                 |Before getting started, explicitly state the steps you want to take and which app(s) you want 
-                |use to accomplish that task. For example, open the contacts app to find out Joe's phone number. 
+                |use to accomplish that task. For example, open the contacts app to find out Joe's phone number.
+                |This may require the use of multiple apps in sequence. 
+                |For example, check the calendar for free time and then check the maps that there is enough time to get between appointments. 
                 |
                 |If after taking a step and getting the ui hierarchy you don't what you find, don't
                 |immediately give up. Try asking for the hierarchy again to give the app more time
@@ -182,6 +184,8 @@ class Agent : Service() {
                 |
                 |Remember: DO NOT ask the user for help or additional information - you must solve the problem autonomously.
                 """.trimMargin()
+
+            System.out.println("SYSTEM PROMPT\n" + systemMessage + "\n\n\n\n\n")
 
             val startTime = System.currentTimeMillis()
             val newConversation = Conversation(

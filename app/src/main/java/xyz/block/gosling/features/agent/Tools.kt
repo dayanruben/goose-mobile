@@ -337,7 +337,7 @@ object ToolHandler {
         }
     }
 
-    private fun buildCompactHierarchy(node: AccessibilityNodeInfo, depth: Int = 0): String {
+    fun buildCompactHierarchy(node: AccessibilityNodeInfo, depth: Int = 0): String {
         try {
             val bounds = Rect().also { node.getBoundsInScreen(it) }
             val attributes = mutableListOf<String>()
@@ -595,7 +595,10 @@ object ToolHandler {
 
     @Tool(
         name = "enterTextByDescription",
-        description = "Try this when you have a description of a field to enter text into. You must specify either the field's ID or provide enough information to find it (like text content or description - ensure email goes in email, phone goes in phone, etc.). After entering text, focus will be cleared to allow entering text in another field.",
+        description = "Enter text into a text field. You must specify either the field's ID or " +
+                "provide enough information to find it (like text content or description - " +
+                "ensure email goes in email, phone goes in phone, etc.). After entering text, " +
+                "focus will be cleared to allow entering text in another field.",
         parameters = [
             ParameterDef(
                 name = "text",

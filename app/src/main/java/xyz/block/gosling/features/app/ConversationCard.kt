@@ -159,7 +159,7 @@ fun ConversationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .height(120.dp),  // Make the card taller
+                .height(280.dp),  // Make the card taller
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -180,16 +180,19 @@ fun ConversationCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 getCurrentAssistantMessage(conversation)?.let { message ->
-                    Text(
-                        text = firstText(message),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (isCurrentConversation)
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 5,  // Increased from 3 to 5 lines
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    val messageText = firstText(message)
+                    if (messageText.isNotBlank() && messageText != "<empty>") {
+                        Text(
+                            text = messageText,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isCurrentConversation)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 5,  // Increased from 3 to 5 lines
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),

@@ -168,7 +168,7 @@ object ToolHandler {
 
             val appInfo = "App: ${activeWindow.packageName}"
             val hierarchy = buildCompactHierarchy(activeWindow)
-            Log.d(TAG, "build compact: $hierarchy")
+            //Log.d(TAG, "build compact: $hierarchy")
             "$appInfo $coordinateHint\n$hierarchy"
         } catch (e: Exception) {
             "ERROR: Failed to get UI hierarchy: ${e.message}"
@@ -234,7 +234,7 @@ object ToolHandler {
                 "[${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}] midpoint=($midX,$midY)"
 
             // Build the node line, or set to empty string if filtered
-            val indent = " -".repeat(depth)
+            val indent = "".repeat(depth)
             val attrStr = if (attributes.isNotEmpty()) " " + attributes.joinToString(" ") else ""
             val nodeLine = if (shouldFilter) "" else "$indent$attrStr $boundsStr"
 
@@ -746,6 +746,25 @@ object ToolHandler {
     }
 
     @Tool(
+        name = "checkSetup",
+        description = "Check how gosling is currently setup. Start helping the user make the recommendations happen.",
+        parameters = [],
+        requiresContext = true,
+        requiresAccessibility = true
+    )
+    fun checkSetup(
+        accessibilityService: AccessibilityService,
+        context: Context,
+        args: JSONObject
+    ): String {
+        val appKinds = IntentAppKinds.allCategories.toString()
+        return "IMPORTANT: you can check on the following on behalf of the user: Please check that gosling has a variety of apps, and be logged in to them. eg that the calendar is configured, email is setup and accounts logged in, messaging and more. " +
+                "Check if there are applications installed for things like ecommerce, " +
+                " Can suggest just a few apps if not there, eg amazon, ebay, afterpay and so on. Suggest other apps if you can sense what the user may benefit from. Some ideas to compare with what is available:" + appKinds ;
+
+    }
+
+    @Tool(
         name = "webSearch",
         description = "Perform a web search using the default search engine." +
                 "If you don't see a clear result, use the click or scrollBrowser tools along with getUIHierarchy to look further.",
@@ -1203,6 +1222,77 @@ object ToolHandler {
         } catch (e: Exception) {
             Log.e("ContactsTool", "Error accessing contacts: ${e.message}")
             return "Error accessing contacts: ${e.message}"
+        }
+    }
+
+    @Tool(
+        name = "notificationHandler",
+        description = "Configure automatic notification handling. Enable or disable notification processing and set rules for how notifications should be handled.",
+        parameters = [
+            ParameterDef(
+                name = "enable",
+                type = "boolean",
+                description = "Whether to enable or disable automatic notification processing"
+            ),
+            ParameterDef(
+                name = "rules",
+                type = "string",
+                description = "Rules for handling notifications. These are instructions for how to process different types of notifications.",
+                required = false
+            ),
+            ParameterDef(
+                name = "replaceRules",
+                type = "boolean",
+                description = "If true, the provided rules will replace existing rules. If false, the rules will be appended to existing rules.",
+                required = false
+            )
+        ],
+        requiresContext = true
+    )
+    fun notificationHandler(context: Context, args: JSONObject): String {
+        val enable = args.getBoolean("enable")
+        val rules = if (args.has("rules")) args.getString("rules") else null
+        val replaceRules = args.optBoolean("replaceRules", true) // Default to replacing rules
+        
+        val settings = xyz.block.gosling.features.settings.SettingsStore(context)
+        
+        // Update notification processing setting
+        settings.shouldProcessNotifications = enable
+        
+        // Update rules if provided
+        if (rules != null) {
+            if (replaceRules) {
+                // Replace existing rules
+                settings.messageHandlingPreferences = rules
+            } else {
+                // Append to existing rules
+                val existingRules = settings.messageHandlingPreferences
+                val updatedRules = if (existingRules.isBlank()) {
+                    rules
+                } else {
+                    "$existingRules\n\n$rules"
+                }
+                settings.messageHandlingPreferences = updatedRules
+            }
+        }
+        
+        val currentRules = settings.messageHandlingPreferences
+        val rulesStatus = if (currentRules.isBlank()) {
+            "No specific handling rules are configured."
+        } else {
+            "Current rules: $currentRules"
+        }
+        
+        val actionTaken = if (rules != null) {
+            if (replaceRules) "Rules have been replaced." else "Rules have been appended."
+        } else {
+            "Rules were not modified."
+        }
+        
+        return if (enable) {
+            "Notification handling has been enabled. $actionTaken $rulesStatus"
+        } else {
+            "Notification handling has been disabled. $actionTaken Rules are preserved but will not be applied."
         }
     }
 

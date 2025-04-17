@@ -24,11 +24,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -79,6 +81,7 @@ import xyz.block.gosling.R
 import xyz.block.gosling.features.agent.Agent
 import xyz.block.gosling.features.agent.AgentStatus
 import xyz.block.gosling.features.agent.Conversation
+import xyz.block.gosling.features.agent.getConversationTitle
 import xyz.block.gosling.features.overlay.OverlayService
 import xyz.block.gosling.features.settings.SettingsStore
 import xyz.block.gosling.shared.services.VoiceRecognitionService
@@ -97,6 +100,14 @@ private val predefinedQueries = listOf(
     "Take a picture using the camera and attach that to a new email. Save the email in drafts"
 )
 
+private val suggestionBubbles = listOf(
+    "What can you help me with?",
+    "Can you find the nearest pharmacy and make a vaccination appointment",
+    "Find me some new tyres I can afford and when I can pick them up",
+    "can you always reply to messages that ask about my availability",
+    "Do I have any time next week when the weather is good to go surfing?",
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MainScreen(
@@ -109,6 +120,7 @@ fun MainScreen(
     val activity = context as MainActivity
     var conversations by remember { mutableStateOf<List<Conversation>>(emptyList()) }
     var textInput by remember { mutableStateOf("") }
+    var currentConversation by remember { mutableStateOf<Conversation?>(null) }
     val listState = rememberLazyListState()
     var showPresetQueries by remember { mutableStateOf(false) }
     var isRecording by remember { mutableStateOf(false) }
@@ -320,7 +332,13 @@ fun MainScreen(
                         value = textInput,
                         onValueChange = { textInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("What can gosling do for you?") },
+                        placeholder = { 
+                            if (currentConversation != null) {
+                                Text("Continue conversation ...")
+                            } else {
+                                Text("What can gosling do for you?") 
+                            }
+                        },
                         colors = TextFieldDefaults.colors(
                             unfocusedContainerColor = Color.Transparent,
                             focusedContainerColor = Color.Transparent,
@@ -426,26 +444,110 @@ fun MainScreen(
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.padding(top = 16.dp)
                     )
+                    
+                    Spacer(modifier = Modifier.height(32.dp))
+                    
+                    // Suggestion bubbles
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        suggestionBubbles.forEach { suggestion ->
+                            SuggestionBubble(
+                                text = suggestion,
+                                onClick = {
+                                    processAgentCommand(context, suggestion)
+                                },
+                                modifier = Modifier.fillMaxWidth(0.8f)
+                            )
+                        }
+                    }
                 }
             } else {
-                LazyColumn(
+                var showAllConversations by remember { mutableStateOf(false) }
+                
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 8.dp),
-                    contentPadding = PaddingValues(
-                        start = paddingValues.calculateStartPadding(LayoutDirection.Ltr),
-                        top = paddingValues.calculateTopPadding(),
-                        end = paddingValues.calculateEndPadding(LayoutDirection.Ltr),
-                        bottom = paddingValues.calculateBottomPadding() + 8.dp
-                    ),
-                    state = listState,
+                        .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(conversations) { conversation ->
-                        ConversationCard(
-                            conversation = conversation,
-                            onClick = { onNavigateToConversation(conversation.id) }
+                    // Content padding for the column
+                    val topPadding = paddingValues.calculateTopPadding()
+                    val startPadding = paddingValues.calculateStartPadding(LayoutDirection.Ltr)
+                    val endPadding = paddingValues.calculateEndPadding(LayoutDirection.Ltr)
+                    val bottomPadding = paddingValues.calculateBottomPadding() + 8.dp
+                    
+                    // Show current conversation if it exists
+                    if (currentConversation != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = topPadding, start = startPadding, end = endPadding)
+                        ) {
+                            ConversationCard(
+                                conversation = currentConversation!!,
+                                onClick = { onNavigateToConversation(currentConversation!!.id) },
+                                isCurrentConversation = true
+                            )
+                        }
+                    }
+                    
+                    // Show More button
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = if (showAllConversations) 0.dp else bottomPadding)
+                            .clickable { showAllConversations = !showAllConversations },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
                         )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (!showAllConversations) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.goose),
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .padding(end = 8.dp)
+                                )
+                            }
+                            Text(
+                                text = if (showAllConversations) "Hide Conversations" else "Show past Conversations",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    // Show other conversations if expanded
+                    if (showAllConversations) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            contentPadding = PaddingValues(bottom = bottomPadding),
+                            state = listState,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(conversations.filter { it.id != currentConversation?.id }) { conversation ->
+                                ConversationCard(
+                                    conversation = conversation,
+                                    onClick = { onNavigateToConversation(conversation.id) },
+                                    isCurrentConversation = false
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -498,6 +600,12 @@ fun MainScreen(
             CoroutineScope(Dispatchers.Main).launch {
                 agent.conversationManager.conversations.collect { updatedConversations ->
                     conversations = updatedConversations
+                }
+            }
+            
+            CoroutineScope(Dispatchers.Main).launch {
+                agent.conversationManager.currentConversation.collect { updatedCurrentConversation ->
+                    currentConversation = updatedCurrentConversation
                 }
             }
         }
@@ -644,5 +752,28 @@ private fun processAgentCommand(
                 OverlayService.getInstance()?.setIsPerformingAction(false)
             }
         }
+    }
+}
+
+@Composable
+private fun SuggestionBubble(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
     }
 }

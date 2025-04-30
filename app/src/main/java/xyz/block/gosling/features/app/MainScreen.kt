@@ -44,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
@@ -55,6 +56,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -496,7 +498,7 @@ fun MainScreen(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = if (showAllConversations) 0.dp else bottomPadding)
+                            .padding(bottom = if (showAllConversations) 0.dp else 8.dp)
                             .clickable { showAllConversations = !showAllConversations },
                         colors = CardDefaults.cardColors(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -525,6 +527,64 @@ fun MainScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+                    
+                    // Clear Conversations button
+                    var showClearConfirmation by remember { mutableStateOf(false) }
+                    
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = if (showAllConversations) 0.dp else bottomPadding)
+                            .clickable { showClearConfirmation = true },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Clear All Conversations",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    
+                    // Confirmation dialog for clearing conversations
+                    if (showClearConfirmation) {
+                        AlertDialog(
+                            onDismissRequest = { showClearConfirmation = false },
+                            title = { Text("Clear all conversations?") },
+                            text = { Text("This will permanently delete all conversations. This action cannot be undone.") },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        val mainActivity = context as? MainActivity
+                                        mainActivity?.currentAgent?.let { agent ->
+                                            agent.conversationManager.clearConversations()
+                                            conversations = emptyList()
+                                            currentConversation = null
+                                        }
+                                        showClearConfirmation = false
+                                    },
+                                ) {
+                                    Text("Clear")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = { showClearConfirmation = false }
+                                ) {
+                                    Text("Cancel")
+                                }
+                            }
+                        )
                     }
                     
                     // Show other conversations if expanded
@@ -587,17 +647,28 @@ fun MainScreen(
         }
     }
 
-    // Watch for agent changes
+    // Watch for agent changes and conversation updates
     LaunchedEffect(activity.currentAgent) {
         val agent = activity.currentAgent
         if (agent != null) {
+            // Initial load of conversations
             CoroutineScope(Dispatchers.Main).launch {
                 conversations = agent.conversationManager.recentConversations()
             }
             
+            // Watch for changes to all conversations
+            CoroutineScope(Dispatchers.Main).launch {
+                agent.conversationManager.conversations.collect { updatedConversations ->
+                    conversations = agent.conversationManager.recentConversations()
+                    Log.d(TAG, "Updated conversations list, count: ${conversations.size}")
+                }
+            }
+            
+            // Watch for changes to current conversation
             CoroutineScope(Dispatchers.Main).launch {
                 agent.conversationManager.currentConversation.collect { updatedCurrentConversation ->
                     currentConversation = updatedCurrentConversation
+                    Log.d(TAG, "Current conversation updated: ${updatedCurrentConversation?.id}")
                 }
             }
         }
@@ -702,6 +773,22 @@ private fun processAgentCommand(
                                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                     }
                     context.startActivity(intent)
+                    
+                    // Force refresh the conversation list
+                    val mainActivity = context as? MainActivity
+                    mainActivity?.currentAgent?.let { agent ->
+                        CoroutineScope(Dispatchers.Main).launch {
+                            // Ensure the current conversation is properly set
+                            if (agent.conversationManager.currentConversation.value == null) {
+                                val recentConversations = agent.conversationManager.recentConversations()
+                                if (recentConversations.isNotEmpty()) {
+                                    val mostRecent = recentConversations.first()
+                                    agent.conversationManager.setCurrentConversation(mostRecent.id)
+                                    Log.d(TAG, "Setting current conversation to: ${mostRecent.id}")
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -742,6 +829,19 @@ private fun processAgentCommand(
                 
                 OverlayService.getInstance()?.updateStatus(AgentStatus.Error(e.message ?: "Unknown error"))
                 OverlayService.getInstance()?.setIsPerformingAction(false)
+                
+                // Force refresh the conversation list
+                val mainActivity = context as? MainActivity
+                mainActivity?.currentAgent?.let { agent ->
+                    CoroutineScope(Dispatchers.Main).launch {
+                        // Refresh conversations list
+                        val recentConversations = agent.conversationManager.recentConversations()
+                        if (recentConversations.isNotEmpty()) {
+                            val mostRecent = recentConversations.first()
+                            agent.conversationManager.setCurrentConversation(mostRecent.id)
+                        }
+                    }
+                }
             }
         }
     }

@@ -23,7 +23,6 @@ Goose Mobile can also react to notifications that come in and spring into action
 You can try any multi step task that you like, it will use the apps on hand.
 
 
-
 In the `benchmarking` directory there are some end to end scenarios (orchestrated with goose), but they are very simple to start with to establish a baseline.
 
 ## Getting Started
